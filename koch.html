@@ -264,14 +264,14 @@ function go() {
 function init_audio(sink) {
     var context;
     try {
-        context = new webkitAudioContext();
+        context = new AudioContext();
     } catch(e) {
         alert("Web Audio API is not supported");
     }
 
-	node = context.createJavaScriptNode(2048, 0, 1);
+    node = context.createScriptProcessor(2048, 0, 1);
     node.onaudioprocess = sink;
-    var gain = context.createGainNode();
+    var gain = context.createGain();
     gain.gain.value = 1.0;
     node.connect(gain)
 	gain.connect(context.destination);
@@ -375,8 +375,7 @@ function testParis(wpm, rate) {
              height: 60em;
              padding: 5px;
              border: 1px solid black;
-             font-family: monospace;
-            }
+             font-family: monospace; }
  </style>
  </head>
  <body>
