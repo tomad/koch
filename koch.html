@@ -1,0 +1,399 @@
+<html>
+ <head>
+ <title>koch morse</title>
+ <script>
+var k, v, n = 0;
+var a = 0;
+var index = 0;
+var w_index = 0;
+var key_buf = Array();
+
+var dit, dah = null;
+var sink = null;
+
+var queue = Array();
+var text = null;
+
+var run = null;
+
+var context = null;
+
+function pushChar(ch) {
+    queue.push(ch)
+    text.innerHtml = queue.join("");    
+}
+
+function popChar(ch) {
+    queue.pop(ch)
+    text.innerHtml = queue.join("");    
+}
+
+function markText(text, index) 
+{
+    var ch = text[index];
+
+    span = document.createElement("span");
+    span.appendChild(document.createTextNode(text.slice(0, index)))
+
+    if (ch) {
+        mark = document.createElement("b");
+        mark.appendChild(document.createTextNode(ch));
+        span.appendChild(mark);
+    }
+
+    span.appendChild(document.createTextNode(text.slice(index + 1)))
+
+    return span;
+}
+
+function markKey(index) {
+    if (text.firstChild) {
+        text.replaceChild(markText(queue.join(""), index), text.firstChild);    
+    } else {
+        text.appendChild(markText(queue.join(""), index), text.firstChild);    
+    }
+}
+
+function nextChar(index, queue) {
+    if (queue.length - index >= 0) {
+        ch = queue[index];
+    } else {
+        ch = null;
+    }
+
+    return ch;
+}
+
+function key(freq, length, rise, fall) {
+    buffer = Array();
+    var gain = 0.0;
+    var sample = 0.0;
+
+    for (var i = 0; i < length; i++) {
+        if (i > rise) {
+            gain = 1.0;
+        } else {
+            gain = 0.5 + (-0.5 * Math.cos((Math.PI * i)/rise));
+        }
+        buffer[sample] = Math.sin(freq * sample) * gain;
+        sample++;
+    }
+
+    // assume key is lifted here (space starts)
+    // and continue for 1 unit?
+    for (var i = 0; i < fall; i++) {
+        if (i > fall) {
+            gain = 0;
+        } else {
+            gain = 0.5 + (0.5 * Math.cos((Math.PI * i)/rise));
+        }
+        buffer[sample] = Math.sin(freq * sample) * gain;
+        sample++;
+    }
+
+    return buffer;
+}
+
+function mk_space(dot_len, fall) {
+    return function (units, fall_p) {
+        if (fall_p != null) {
+            fall = fall_p;
+        }
+        length = (dot_len * units) - fall;
+        buf = Array();
+        for (i=0; i<length; i++) {
+            buf[i] = 0.0;
+        }
+        return buf;
+    }
+}
+
+
+function toMorse(ch) {
+
+    morse = {
+     'a':'.-', 'b':'-...', 'c':'-.-.', 'd':'-..',
+     'e':'.', 'f':'..-.', 'g':'--.', 'h':'....',
+     'i':'..', 'j':'.---', 'k':'-.-', 'l':'.-..',
+     'm':'--', 'n':'-.', 'o':'---', 'p':'.--.',
+     'q':'--.-', 'r':'.-.', 's':'...', 't':'-',
+     'u':'..-', 'v':'...-', 'w':'.--', 'x':'-..-',
+     'y':'-.--', 'z':'--..', '0':'-----', '1':'.----',
+     '2':'..---', '3':'...--', '4':'....-', '5':'.....',
+     '6':'-....', '7':'--...', '8':'---..', '9':'----.',
+     '.':'.-.-.-', ',':'--..--', ':':'---...', '?':'..--..',
+     '-':'-....-', '/':'-..-.', '=':'.-.-.', '@': '...-.-',
+     '!':'...-.-'
+    };
+
+    return morse[ch];
+}
+
+
+function randomString(len, charSet) {
+    charSet = charSet || 'abcdefghijklmnopqrstuvwxyz0123456789';
+    var randomString = '';
+    var c = '';
+    for (var i = 0; i < len; i++) {
+        var randomPoz = Math.floor(Math.random() * charSet.length);
+        c = charSet.substring(randomPoz,randomPoz+1);
+        pushChar(c);
+        randomString += c;
+    }
+    pushChar(' ');
+    return randomString;
+}
+
+function random_text() {
+    var max = 6;
+    var min = 3;
+    var len = Math.floor(Math.random() * (max - min + 1)) + min;
+    randomString(len);
+}
+
+function key_eval(key) {
+    if (key) {
+        a = key.map(function(o){ return o.call(); });
+        b = a.reduce(function(x, y){ return x.concat(y); });
+        return b;
+    }
+    return Array();
+}
+
+function pushKey(key, index) {
+    var f = function() { 
+        markKey(index);
+        return key_eval(key);
+    }
+    key_buf.push(f);
+}
+
+function syn(code) {
+    var syms = code.split('');
+    var buf = Array();
+
+    syms.forEach(function(e, i, a){
+        switch (e) {
+            case '.':
+                buf.push(function(){ return dit; });
+                break;
+            case '-': 
+                buf.push(function(){ return dah; });
+                break;
+        }
+
+        if (i < a.length - 1) {
+            buf.push(function(){ return space(1); });
+        }
+    })
+    return buf;
+}
+
+function keyer(ch) {
+    var code = Array()
+    if (ch == " ") {
+        return Array(function(){ return space(4, 0); });
+    } else {
+        m = toMorse(ch);
+        code = code.concat(syn(m));
+    }
+    code.push(function(){ return space(3); });
+    return code;
+}
+
+function take(ch) {
+    ch = nextChar(index, queue);
+
+    if (ch == ' ') {
+        random_text();
+    }
+
+
+    if (ch == null) {
+        return null;
+    }
+
+    code = keyer(ch);
+    pushKey(code, index);
+    index++;
+    return ch;
+}
+
+function shift_key_buf() {
+    var next = key_buf.shift();
+    var n = next();
+    if (run) {
+        take();
+    }
+    return n;
+}
+
+var sam_index = 0;
+var sam_buf = Array();
+
+function read_sam_buf() {
+    /*
+        sam_buf:   stores the waveform for a complete character
+        sam_index: a sample pointer into sam_buf
+        key_buf: the buffer of chars to send
+    */
+
+    // if needed, load next code into buffer
+    if (sam_index >= sam_buf.length && key_buf.length > 0) {
+        sam_buf = shift_key_buf();
+        sam_index = 0;
+    } 
+        
+    // output the buffer
+    if (sam_index < sam_buf.length) {  
+        v = sam_buf[sam_index];
+        sam_index++;
+        return v;
+    }
+
+    // send nothing
+    return 0.0;
+}
+
+function go() {
+    run = true;
+    random_text();
+    take();
+}
+
+function init_audio(sink) {
+    var context;
+    try {
+        context = new webkitAudioContext();
+    } catch(e) {
+        alert("Web Audio API is not supported");
+    }
+
+	node = context.createJavaScriptNode(2048, 0, 1);
+    node.onaudioprocess = sink;
+    var gain = context.createGainNode();
+    gain.gain.value = 1.0;
+    node.connect(gain)
+	gain.connect(context.destination);
+
+    return context;
+}
+
+function stop() {
+    // context.kill();
+    run = false;
+}
+
+function init_tones(wpm, tone, rate) {
+    var dot_len = (1.2 / wpm) * rate;
+    var dash_len = dot_len * 3.0;
+    var freq = 2 * Math.PI * tone / rate;
+    var rise_time = 0.01 * rate;    // 10 ms
+    var fall_time = 0.01 * rate;    // 10 ms
+    console.log(rate, dot_len, dash_len, freq);
+    dit = key(freq, dot_len, rise_time, fall_time);
+    dah = key(freq, dash_len, rise_time, fall_time);
+    space = mk_space(dot_len, fall_time);
+    testParis(wpm, rate);
+}
+
+function init() {
+
+    text = document.getElementById("text");
+
+    function op(e) {
+        var out_buffer = event.outputBuffer.getChannelData(0);
+        for (var j = 0; j < out_buffer.length; j++) {
+            out_buffer[j] = read_sam_buf();
+        }
+    }
+
+    context = init_audio(op);
+
+    var wpm = 25;
+    var tone = 550;
+    var rate = context.sampleRate;
+    init_tones(wpm, tone, rate);
+
+    wpm_ctrl = document.getElementById("wpm");
+    wpm_ctrl.value = wpm;
+    wpm_ctrl.onchange = function(e) {
+            wpm = this.value;
+            init_tones(wpm, tone, rate);
+        }
+
+    tone_ctrl = document.getElementById("freq");
+    tone_ctrl.value = tone;
+    tone_ctrl.onchange = function(e) {
+            tone = this.value;
+            // only remake when needed? (ie build lazy)
+            init_tones(wpm, tone, rate);
+        }
+
+
+    /*
+    var input = document.getElementById("input");
+    input.oninput = function(t) {
+        console.log(t);
+        pushChar(this.value);
+        markKey(index);
+        this.value = '';
+    }
+    */
+}
+
+document.addEventListener("DOMContentLoaded", init, false);
+
+function testParis(wpm, rate) {
+    /*
+        "PARIS " has a length of 50 dots and defines 1 WPM if it takes 1 minute
+    */
+    var actual_len = "paris ".split('')
+        .map(keyer)
+        .reduce(
+            function(a, b){
+                return a.concat(b)})
+        .map(
+            function(x){
+                return x().length})
+        .reduce(function(a, b) {return a + b}) / rate;
+
+    var expected_len = 1.2 / wpm * 50;
+
+    // all timings are based on dot len, which as a 1/rate ambiguity
+    var error = (1 / rate) * 50;
+
+    if ((actual_len - expected_len) > error) {
+        console.log("Fail: ", actual_len, expected_len, actual_len - expected_len, error);
+    }
+}
+
+     </script>
+ <style type="text/css">
+     #input { width: 80em; }
+     #text { width: 80em;
+             height: 60em;
+             padding: 5px;
+             border: 1px solid black;
+             font-family: monospace;
+            }
+ </style>
+ </head>
+ <body>
+ <div class="control">
+    <label for="wpm">wpm</label>
+    <input id="wpm" type="number" name="wpm" min=10 max=60 />
+    <label for="freq">freq</label>
+    <input id="freq" type="number" name="freq" min=300 max=600 />
+    <label for="chars">chars</label>
+    <input type="text" name="chars" />
+    <button type="button" onclick="go()">Start</button>
+    <button type="button" onclick="stop()">Stop</button>
+ </div>
+ <div id="text" tabindex="0"></div>
+ <pre>
+ </pre>
+ <canvas id="canvas" width="600" height=100"></canvas>
+ </body>
+</html>
+
