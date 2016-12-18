@@ -301,7 +301,7 @@ function init() {
 
     text = document.getElementById("text");
 
-    function op(e) {
+    function op(event) {
         var out_buffer = event.outputBuffer.getChannelData(0);
         for (var j = 0; j < out_buffer.length; j++) {
             out_buffer[j] = read_sam_buf();
